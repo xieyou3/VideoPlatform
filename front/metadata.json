@@ -1,0 +1,5 @@
+{
+  "name": "V-Stream 视频平台",
+  "description": "一个功能完备的视频分享与社交平台，支持弹幕、评论、私信和群聊。",
+  "requestFramePermissions": []
+}

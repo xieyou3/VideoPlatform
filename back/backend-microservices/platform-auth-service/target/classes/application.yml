@@ -1,0 +1,29 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: platform-auth-service
+  datasource:
+    url: jdbc:mysql://localhost:3306/video_platform?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+    username: root
+    password: 761320
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  data:
+    redis:
+      host: localhost
+      port: 6379
+  jackson:
+    property-naming-strategy: SNAKE_CASE
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+  mapper-locations: classpath*:/mapper/**/*.xml
+  type-aliases-package: com.videoplatform.auth.domain
+
+security:
+  jwt:
+    secret: video-platform-demo-secret-video-platform-demo-secret
+    access-expire-seconds: 1800
+    refresh-expire-seconds: 604800
