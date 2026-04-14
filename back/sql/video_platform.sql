@@ -53,13 +53,29 @@ CREATE TABLE IF NOT EXISTS friend_relation (
     UNIQUE KEY uk_friend_pair (user_id, friend_user_id)
 );
 
+DROP TABLE IF EXISTS video_entity;
+
+CREATE TABLE IF NOT EXISTS video_entity (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    file_hash VARCHAR(512) NOT NULL,
+    video_url VARCHAR(512) NOT NULL,
+    duration_seconds INT NOT NULL DEFAULT 0,
+    file_size BIGINT NOT NULL DEFAULT 0,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_file_hash (file_hash)
+);
+
+DROP TABLE IF EXISTS video;
+
 CREATE TABLE IF NOT EXISTS video (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
     author_id BIGINT NOT NULL,
+    file_hash VARCHAR(512) NOT NULL,
     title VARCHAR(128) NOT NULL,
     description TEXT,
-    cover_url VARCHAR(255) DEFAULT NULL,
-    video_url VARCHAR(255) NOT NULL,
+    cover_url VARCHAR(512) DEFAULT NULL,
+    video_url VARCHAR(512) NOT NULL,
     duration_seconds INT NOT NULL DEFAULT 0,
     category VARCHAR(64) DEFAULT NULL,
     status VARCHAR(32) NOT NULL DEFAULT 'PROCESSING',
@@ -73,6 +89,7 @@ CREATE TABLE IF NOT EXISTS video (
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     KEY idx_video_author (author_id),
+    KEY idx_video_hash (file_hash),
     KEY idx_video_status_time (status, created_at)
 );
 
@@ -90,30 +107,6 @@ CREATE TABLE IF NOT EXISTS video_tag (
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE KEY uk_video_tag (video_id, tag_id),
     KEY idx_video_tag_tag (tag_id)
-);
-
-CREATE TABLE IF NOT EXISTS video_upload_session (
-    id BIGINT PRIMARY KEY AUTO_INCREMENT,
-    file_hash VARCHAR(128) NOT NULL,
-    file_name VARCHAR(255) NOT NULL,
-    total_chunks INT NOT NULL,
-    uploaded_chunks INT NOT NULL DEFAULT 0,
-    merged TINYINT(1) NOT NULL DEFAULT 0,
-    minio_object_name VARCHAR(255) DEFAULT NULL,
-    created_by BIGINT NOT NULL,
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    UNIQUE KEY uk_upload_file_hash (file_hash)
-);
-
-CREATE TABLE IF NOT EXISTS video_upload_chunk (
-    id BIGINT PRIMARY KEY AUTO_INCREMENT,
-    upload_session_id BIGINT NOT NULL,
-    chunk_index INT NOT NULL,
-    chunk_size BIGINT NOT NULL DEFAULT 0,
-    uploaded TINYINT(1) NOT NULL DEFAULT 1,
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE KEY uk_upload_chunk (upload_session_id, chunk_index)
 );
 
 CREATE TABLE IF NOT EXISTS video_interaction (

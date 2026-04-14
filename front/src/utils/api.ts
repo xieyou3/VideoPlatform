@@ -9,9 +9,12 @@ async function request<T>(url: string, options: RequestOptions = {}): Promise<T>
   const { needAuth = false, headers: customHeaders, skipErrorRedirect = false, ...restOptions } = options;
   
   const headers: HeadersInit = {
-    'Content-Type': 'application/json',
     ...customHeaders,
   };
+
+  if (!(restOptions.body instanceof FormData)) {
+    headers['Content-Type'] = 'application/json';
+  }
 
   try {
     const response = await fetch(`${API_BASE}${url}`, {
@@ -48,14 +51,14 @@ export const api = {
     request<T>(url, { 
       ...options, 
       method: 'POST',
-      body: JSON.stringify(data),
+      body: data instanceof FormData ? data : JSON.stringify(data),
     }),
   
   put: <T>(url: string, data?: any, options?: RequestOptions) => 
     request<T>(url, { 
       ...options, 
       method: 'PUT',
-      body: JSON.stringify(data),
+      body: data instanceof FormData ? data : JSON.stringify(data),
     }),
   
   delete: <T>(url: string, options?: RequestOptions) => 

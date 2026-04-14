@@ -26,18 +26,37 @@ public class JwtRelayFilter implements GlobalFilter, Ordered {
         if (pathMatcher.match("/api/auth/**", path)) {
             return chain.filter(exchange);
         }
-        String authHeader = exchange.getRequest().getHeaders().getFirst(SecurityConstants.AUTHORIZATION);
-        if (authHeader == null || !authHeader.startsWith(SecurityConstants.BEARER_PREFIX)) {
+        
+        String token = extractToken(exchange);
+        
+        if (token == null || token.isBlank()) {
             return chain.filter(exchange);
         }
-        String token = authHeader.substring(SecurityConstants.BEARER_PREFIX.length());
-        JwtUser user = jwtTokenProvider.parseUser(token);
-        ServerHttpRequest request = exchange.getRequest().mutate()
-                .header(SecurityConstants.USER_ID_HEADER, String.valueOf(user.getUserId()))
-                .header(SecurityConstants.USERNAME_HEADER, user.getUsername())
-                .header(SecurityConstants.ROLE_HEADER, String.join(",", user.getRoles()))
-                .build();
-        return chain.filter(exchange.mutate().request(request).build());
+        
+        try {
+            JwtUser user = jwtTokenProvider.parseUser(token);
+            ServerHttpRequest request = exchange.getRequest().mutate()
+                    .header(SecurityConstants.USER_ID_HEADER, String.valueOf(user.getUserId()))
+                    .header(SecurityConstants.USERNAME_HEADER, user.getUsername())
+                    .header(SecurityConstants.ROLE_HEADER, String.join(",", user.getRoles()))
+                    .build();
+            return chain.filter(exchange.mutate().request(request).build());
+        } catch (Exception e) {
+            return chain.filter(exchange);
+        }
+    }
+    
+    private String extractToken(ServerWebExchange exchange) {
+        String authHeader = exchange.getRequest().getHeaders().getFirst(SecurityConstants.AUTHORIZATION);
+        if (authHeader != null && authHeader.startsWith(SecurityConstants.BEARER_PREFIX)) {
+            return authHeader.substring(SecurityConstants.BEARER_PREFIX.length());
+        }
+        
+        if (exchange.getRequest().getCookies().containsKey(SecurityConstants.ACCESS_TOKEN_COOKIE)) {
+            return exchange.getRequest().getCookies().getFirst(SecurityConstants.ACCESS_TOKEN_COOKIE).getValue();
+        }
+        
+        return null;
     }
 
     @Override

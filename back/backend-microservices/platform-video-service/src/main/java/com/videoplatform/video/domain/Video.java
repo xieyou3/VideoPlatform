@@ -14,6 +14,7 @@ public class Video extends BaseEntity {
     @TableId(type = IdType.AUTO)
     private Long id;
     private Long authorId;
+    private String fileHash;
     private String title;
     private String description;
     private String coverUrl;

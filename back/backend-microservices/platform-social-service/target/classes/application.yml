@@ -1,0 +1,13 @@
+server:
+  port: 8083
+spring:
+  application:
+    name: platform-social-service
+  datasource:
+    url: jdbc:mysql://localhost:3306/video_platform?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+    username: root
+    password: root
+    driver-class-name: com.mysql.cj.jdbc.Driver
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true

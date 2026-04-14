@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router';
+import { useAuthStore } from '@/stores/auth';
 import HomeView from '@/views/HomeView.vue';
 
 const router = createRouter({
@@ -28,6 +29,7 @@ const router = createRouter({
       path: '/upload',
       name: 'upload',
       component: () => import('@/views/UploadView.vue'),
+      meta: { requiresAuth: true }
     },
     {
       path: '/social',
@@ -35,6 +37,16 @@ const router = createRouter({
       component: () => import('@/views/SocialView.vue'),
     },
   ],
+});
+
+router.beforeEach((to, from, next) => {
+  const authStore = useAuthStore();
+  
+  if (to.meta.requiresAuth && !authStore.isLoggedIn) {
+    next('/login');
+  } else {
+    next();
+  }
 });
 
 export default router;

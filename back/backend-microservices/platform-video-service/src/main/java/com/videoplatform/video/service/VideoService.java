@@ -100,8 +100,11 @@ public class VideoService {
 
     @Transactional
     public VideoDetailResponse publishVideo(Long userId, VideoPublishRequest request) {
+        String fileHash = extractFileHashFromUrl(request.getVideoUrl());
+        
         Video video = new Video();
         video.setAuthorId(userId);
+        video.setFileHash(fileHash);
         video.setTitle(request.getTitle());
         video.setDescription(request.getDescription());
         video.setCoverUrl(request.getCoverUrl());
@@ -119,6 +122,22 @@ public class VideoService {
         videoMapper.insert(video);
         saveTags(video.getId(), request.getTags());
         return getVideoDetail(video.getId());
+    }
+
+    private String extractFileHashFromUrl(String videoUrl) {
+        if (videoUrl == null || videoUrl.isBlank()) {
+            return "";
+        }
+        String[] parts = videoUrl.split("/");
+        if (parts.length > 0) {
+            String fileName = parts[parts.length - 1];
+            int dotIndex = fileName.lastIndexOf(".");
+            if (dotIndex > 0) {
+                return fileName.substring(0, dotIndex);
+            }
+            return fileName;
+        }
+        return videoUrl;
     }
 
     @Transactional

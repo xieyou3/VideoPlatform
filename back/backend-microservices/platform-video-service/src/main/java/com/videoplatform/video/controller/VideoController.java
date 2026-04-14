@@ -12,6 +12,7 @@ import com.videoplatform.video.service.VideoService;
 import jakarta.validation.Valid;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -20,6 +21,7 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+@Slf4j
 @RestController
 @RequestMapping("/api/videos")
 @RequiredArgsConstructor
@@ -44,8 +46,35 @@ public class VideoController {
 
     @PostMapping
     public ApiResponse<VideoDetailResponse> publishVideo(@Valid @RequestBody VideoPublishRequest request,
-                                                         @RequestHeader(value = "X-User-Id", required = false) Long userId) {
-        return ApiResponse.success(videoService.publishVideo(userId == null ? 1L : userId, request));
+                                                         @RequestHeader(value = "X-User-Id", required = false) Long userId,
+                                                         @RequestHeader(value = "Authorization", required = false) String authorization) {
+        log.info("收到发布视频请求: title={}, userId={}", request.getTitle(), userId);
+        
+        if (userId == null && authorization != null && authorization.startsWith("Bearer ")) {
+            try {
+                com.videoplatform.common.security.JwtTokenProvider jwtTokenProvider = 
+                    new com.videoplatform.common.security.JwtTokenProvider(
+                        "video-platform-demo-secret-video-platform-demo-secret", 1800, 604800);
+                userId = jwtTokenProvider.getUserIdFromToken(authorization.substring(7));
+                log.info("从 Token 解析出 userId: {}", userId);
+            } catch (Exception e) {
+                log.error("解析 Token 失败", e);
+            }
+        }
+        
+        if (userId == null) {
+            log.warn("用户未登录，使用默认 userId=1");
+            userId = 1L;
+        }
+        
+        try {
+            VideoDetailResponse response = videoService.publishVideo(userId, request);
+            log.info("视频发布成功: videoId={}", response.getId());
+            return ApiResponse.success(response);
+        } catch (Exception e) {
+            log.error("视频发布失败", e);
+            return ApiResponse.fail(500, "视频发布失败: " + e.getMessage());
+        }
     }
 
     @PostMapping("/{id}/comments")

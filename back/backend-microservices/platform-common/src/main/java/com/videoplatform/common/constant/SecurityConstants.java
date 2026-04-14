@@ -8,6 +8,7 @@ public final class SecurityConstants {
     public static final String USERNAME_HEADER = "X-Username";
     public static final String ROLE_HEADER = "X-Roles";
     public static final String REFRESH_TOKEN_COOKIE = "refresh_token";
+    public static final String ACCESS_TOKEN_COOKIE = "access_token";
 
     private SecurityConstants() {
     }

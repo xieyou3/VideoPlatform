@@ -1,110 +1,144 @@
 package com.videoplatform.video.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.videoplatform.video.domain.VideoUploadChunk;
-import com.videoplatform.video.domain.VideoUploadSession;
+import com.videoplatform.video.domain.VideoEntity;
 import com.videoplatform.video.dto.ChunkCheckRequest;
 import com.videoplatform.video.dto.ChunkCheckResponse;
 import com.videoplatform.video.dto.ChunkUploadResponse;
+import com.videoplatform.video.dto.CoverUploadResponse;
 import com.videoplatform.video.dto.UploadCompleteRequest;
-import com.videoplatform.video.mapper.VideoUploadChunkMapper;
-import com.videoplatform.video.mapper.VideoUploadSessionMapper;
-import java.util.Set;
-import java.util.stream.Collectors;
+import com.videoplatform.video.mapper.VideoEntityMapper;
+import com.videoplatform.video.service.impl.MinioStorageService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.security.MessageDigest;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArraySet;
+
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class VideoUploadService {
 
-    private final VideoUploadSessionMapper uploadSessionMapper;
-    private final VideoUploadChunkMapper uploadChunkMapper;
+    private final VideoEntityMapper videoEntityMapper;
     private final StorageService storageService;
 
-    public ChunkCheckResponse checkChunk(Long userId, ChunkCheckRequest request) {
-        VideoUploadSession session = createOrGetSession(userId, request);
-        Set<Integer> uploadedChunks = uploadChunkMapper.selectList(new LambdaQueryWrapper<VideoUploadChunk>()
-                        .eq(VideoUploadChunk::getUploadSessionId, session.getId()))
-                .stream()
-                .map(VideoUploadChunk::getChunkIndex)
-                .collect(Collectors.toSet());
-        return ChunkCheckResponse.builder()
-                .uploaded(uploadedChunks.contains(request.getChunkIndex()))
-                .uploadedChunks(uploadedChunks)
+    private final ConcurrentHashMap<String, Set<Integer>> uploadProgressMap = new ConcurrentHashMap<>();
+
+    public ChunkCheckResponse checkMd5(String fileHash) {
+        VideoEntity entity = videoEntityMapper.selectOne(new LambdaQueryWrapper<VideoEntity>()
+            .eq(VideoEntity::getFileHash, fileHash));
+        
+        if (entity != null) {
+            String videoUrl = ((MinioStorageService) storageService).getVideoUrl(entity.getVideoUrl());
+            return ChunkCheckResponse.builder()
+                .exists(true)
+                .videoUrl(videoUrl)
+                .durationSeconds(entity.getDurationSeconds())
+                .fileSize(entity.getFileSize())
                 .build();
+        }
+        
+        return ChunkCheckResponse.builder()
+            .exists(false)
+            .build();
     }
 
     @Transactional
     public ChunkUploadResponse uploadChunk(Long userId, ChunkCheckRequest request, MultipartFile file) {
-        VideoUploadSession session = createOrGetSession(userId, request);
-        boolean existed = uploadChunkMapper.selectCount(new LambdaQueryWrapper<VideoUploadChunk>()
-                .eq(VideoUploadChunk::getUploadSessionId, session.getId())
-                .eq(VideoUploadChunk::getChunkIndex, request.getChunkIndex())) > 0;
-        if (!existed) {
-            storageService.uploadChunk(session.getFileHash() + "/chunk-" + request.getChunkIndex(), file);
-            VideoUploadChunk chunk = new VideoUploadChunk();
-            chunk.setUploadSessionId(session.getId());
-            chunk.setChunkIndex(request.getChunkIndex());
-            chunk.setChunkSize(file.getSize());
-            chunk.setUploaded(true);
-            uploadChunkMapper.insert(chunk);
-            session.setUploadedChunks(session.getUploadedChunks() + 1);
-            uploadSessionMapper.updateById(session);
+        String fileHash = request.getFileHash();
+        Integer chunkIndex = request.getChunkIndex();
+        Integer totalChunks = request.getTotalChunks();
+        
+        uploadProgressMap.computeIfAbsent(fileHash, k -> new CopyOnWriteArraySet<>());
+        
+        Set<Integer> uploadedChunks = uploadProgressMap.get(fileHash);
+        
+        if (!uploadedChunks.contains(chunkIndex)) {
+            String objectName = fileHash + "/" + chunkIndex;
+            storageService.uploadChunk(objectName, file);
+            
+            uploadedChunks.add(chunkIndex);
+            log.info("用户 {} 上传分片 {}/{} 成功", userId, chunkIndex + 1, totalChunks);
         }
-        boolean merged = session.getUploadedChunks() >= session.getTotalChunks();
+        
+        boolean allUploaded = uploadedChunks.size() == totalChunks;
         String videoUrl = null;
-        if (merged && !Boolean.TRUE.equals(session.getMerged())) {
-            videoUrl = mergeSession(session);
+        
+        if (allUploaded) {
+            videoUrl = mergeAndSaveEntity(fileHash, totalChunks, request.getFileName());
+            uploadProgressMap.remove(fileHash);
+            log.info("文件 {} 所有分片上传完成并已合并", fileHash);
         }
+        
         return ChunkUploadResponse.builder()
-                .merged(merged)
-                .videoUrl(videoUrl)
-                .objectName(session.getMinioObjectName())
+            .merged(allUploaded)
+            .videoUrl(videoUrl)
+            .uploadedChunks(uploadedChunks.size())
+            .totalChunks(totalChunks)
+            .build();
+    }
+
+    public CoverUploadResponse uploadCover(MultipartFile file) {
+        try {
+            String fileHash = calculateFileHash(file);
+            String fileName = file.getOriginalFilename();
+            String extension = fileName != null && fileName.contains(".") 
+                ? fileName.substring(fileName.lastIndexOf(".")) 
+                : ".jpg";
+            
+            String objectName = "IMG_" + fileHash + extension;
+            
+            String coverUrl = storageService.uploadImage(objectName, file);
+            
+            log.info("封面图上传成功: {}", coverUrl);
+            
+            return CoverUploadResponse.builder()
+                .coverUrl(coverUrl)
                 .build();
-    }
-
-    @Transactional
-    public ChunkUploadResponse complete(Long userId, UploadCompleteRequest request) {
-        VideoUploadSession session = uploadSessionMapper.selectOne(new LambdaQueryWrapper<VideoUploadSession>()
-                .eq(VideoUploadSession::getFileHash, request.getFileHash())
-                .eq(VideoUploadSession::getCreatedBy, userId));
-        if (session == null) {
-            throw new IllegalArgumentException("upload session not found");
+        } catch (Exception e) {
+            log.error("封面图上传失败", e);
+            throw new IllegalStateException("封面图上传失败: " + e.getMessage(), e);
         }
-        String videoUrl = Boolean.TRUE.equals(session.getMerged()) ? session.getMinioObjectName() : mergeSession(session);
-        return ChunkUploadResponse.builder()
-                .merged(true)
-                .videoUrl(videoUrl)
-                .objectName(session.getMinioObjectName())
-                .build();
     }
 
-    private VideoUploadSession createOrGetSession(Long userId, ChunkCheckRequest request) {
-        VideoUploadSession session = uploadSessionMapper.selectOne(new LambdaQueryWrapper<VideoUploadSession>()
-                .eq(VideoUploadSession::getFileHash, request.getFileHash())
-                .eq(VideoUploadSession::getCreatedBy, userId));
-        if (session != null) {
-            return session;
+    private String calculateFileHash(MultipartFile file) {
+        try {
+            MessageDigest md = MessageDigest.getInstance("MD5");
+            byte[] fileBytes = file.getBytes();
+            byte[] hashBytes = md.digest(fileBytes);
+            
+            StringBuilder sb = new StringBuilder();
+            for (byte b : hashBytes) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.toString();
+        } catch (Exception e) {
+            throw new IllegalStateException("计算文件哈希失败", e);
         }
-        session = new VideoUploadSession();
-        session.setFileHash(request.getFileHash());
-        session.setFileName(request.getFileName());
-        session.setTotalChunks(request.getTotalChunks());
-        session.setUploadedChunks(0);
-        session.setMerged(false);
-        session.setCreatedBy(userId);
-        uploadSessionMapper.insert(session);
-        return session;
     }
 
-    private String mergeSession(VideoUploadSession session) {
-        String videoUrl = storageService.mergeChunks(session.getFileHash(), session.getTotalChunks(), session.getFileName());
-        session.setMerged(true);
-        session.setMinioObjectName(videoUrl);
-        uploadSessionMapper.updateById(session);
-        return videoUrl;
+    private String mergeAndSaveEntity(String fileHash, int totalChunks, String fileName) {
+        String videoObjectName = storageService.mergeChunks(fileHash, totalChunks, fileName);
+        
+        VideoEntity entity = videoEntityMapper.selectOne(new LambdaQueryWrapper<VideoEntity>()
+            .eq(VideoEntity::getFileHash, fileHash));
+        
+        if (entity == null) {
+            entity = new VideoEntity();
+            entity.setFileHash(fileHash);
+            entity.setVideoUrl(videoObjectName);
+            entity.setFileSize(0L);
+            entity.setDurationSeconds(0);
+            videoEntityMapper.insert(entity);
+            log.info("创建视频实体记录: {}", fileHash);
+        }
+        
+        return ((MinioStorageService) storageService).getVideoUrl(videoObjectName);
     }
 }
