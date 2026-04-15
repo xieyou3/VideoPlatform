@@ -6,8 +6,29 @@ spring:
   datasource:
     url: jdbc:mysql://localhost:3306/video_platform?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
     username: root
-    password: root
+    password: 761320
     driver-class-name: com.mysql.cj.jdbc.Driver
+
 mybatis-plus:
   configuration:
     map-underscore-to-camel-case: true
+
+# 讯飞星火配置
+xinghuo:
+  app-id: ca597064
+  api-key: ba5ba5e361544a3a3a0cfea2c062b890
+  api-secret: Zjc4NjZjZjllMTgyZDM5ZDg2NDcwZWNl
+
+  # 通用对话（Spark Lite）
+  chat:
+    host-url: wss://spark-api.xf-yun.com/v1.1/chat
+    domain: lite
+
+  # PPT 生成
+  ppt:
+    host-url: https://zwapi.xfyun.cn
+
+  # 图片生成
+  image:
+    host-url: https://spark-api.cn-huabei-1.xf-yun.com/v2.1/tti
+

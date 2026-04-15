@@ -11,11 +11,14 @@ import {
   Bell
 } from 'lucide-vue-next';
 import { useAuthStore } from '@/stores/auth';
+import { useChatStore } from '@/stores/chat';
 
 const auth = useAuthStore();
+const chatStore = useChatStore();
 const router = useRouter();
 
 const handleLogout = () => {
+  chatStore.disconnect();
   auth.logout();
   router.push('/login');
 };
@@ -46,6 +49,12 @@ const handleLogout = () => {
         </RouterLink>
         <RouterLink to="/social" class="p-2 hover:bg-zinc-800 rounded-full transition-colors" title="社交中心">
           <Users class="w-6 h-6 text-zinc-300" />
+        </RouterLink>
+        <RouterLink to="/chat" class="p-2 hover:bg-zinc-800 rounded-full transition-colors relative" title="消息">
+          <MessageCircle class="w-6 h-6 text-zinc-300" />
+          <span v-if="chatStore.unreadTotal > 0" class="absolute top-1 right-1 min-w-[18px] h-[18px] bg-orange-500 rounded-full text-[10px] font-bold flex items-center justify-center px-1 border-2 border-zinc-900">
+            {{ chatStore.unreadTotal > 99 ? '99+' : chatStore.unreadTotal }}
+          </span>
         </RouterLink>
         <button class="p-2 hover:bg-zinc-800 rounded-full transition-colors relative">
           <Bell class="w-6 h-6 text-zinc-300" />

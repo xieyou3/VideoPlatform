@@ -36,6 +36,12 @@ const router = createRouter({
       name: 'social',
       component: () => import('@/views/SocialView.vue'),
     },
+    {
+      path: '/chat',
+      name: 'chat',
+      component: () => import('@/views/ChatView.vue'),
+      meta: { requiresAuth: true }
+    },
   ],
 });
 

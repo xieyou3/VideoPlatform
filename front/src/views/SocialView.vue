@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted, nextTick } from 'vue';
-import { 
+import { useRouter } from 'vue-router';
+import {
   Users, 
   MessageCircle, 
   UserPlus, 
@@ -15,12 +16,16 @@ import {
   CheckCheck
 } from 'lucide-vue-next';
 import { useAuthStore } from '@/stores/auth';
+import { createSession } from '@/api/chat';
 
 const auth = useAuthStore();
+const router = useRouter();
 const activeTab = ref<'chats' | 'friends'>('chats');
 const activeChatId = ref<string | null>(null);
 const messageInput = ref('');
 const chatContainer = ref<HTMLElement | null>(null);
+const showAddFriendModal = ref(false);
+const friendSearchInput = ref('');
 
 interface Message {
   id: string;
@@ -39,6 +44,7 @@ interface Chat {
   unread: number;
   type: 'private' | 'group';
   messages: Message[];
+  partnerId?: number;
 }
 
 const chats = reactive<Chat[]>([]);
@@ -51,6 +57,60 @@ const selectChat = (chat: Chat) => {
   activeChat.value = chat;
   chat.unread = 0;
   scrollToBottom();
+};
+
+const startChatWithFriend = async (friend: any) => {
+  if (!auth.user) return;
+
+  try {
+    await createSession({
+      userId: parseInt(auth.user.id),
+      receiverId: friend.id
+    });
+    router.push('/chat');
+  } catch (error) {
+    console.error('创建会话失败:', error);
+    alert('创建会话失败，请重试');
+  }
+};
+
+const handleAddFriend = () => {
+  showAddFriendModal.value = true;
+};
+
+const closeAddFriendModal = () => {
+  showAddFriendModal.value = false;
+  friendSearchInput.value = '';
+};
+
+const searchAndAddFriend = async () => {
+  if (!friendSearchInput.value.trim()) {
+    alert('请输入用户名或ID');
+    return;
+  }
+
+  try {
+    const response = await fetch(`/api/social/friends`);
+    const result = await response.json();
+
+    if (result.code === 200 && result.data) {
+      const found = result.data.find((f: any) =>
+        f.name === friendSearchInput.value || f.id.toString() === friendSearchInput.value
+      );
+
+      if (found) {
+        alert(`找到用户: ${found.name}\n\n提示：好友功能正在开发中，请稍后再试。`);
+      } else {
+        alert('未找到该用户，请检查输入是否正确');
+      }
+      closeAddFriendModal();
+    } else {
+      alert('获取好友列表失败');
+    }
+  } catch (error) {
+    console.error('搜索好友失败:', error);
+    alert('搜索失败，请重试');
+  }
 };
 
 const sendMessage = () => {
@@ -71,7 +131,6 @@ const sendMessage = () => {
   
   scrollToBottom();
   
-  // Simulate reply
   setTimeout(() => {
     if (activeChat.value) {
       const reply: Message = {
@@ -104,11 +163,14 @@ const fetchData = async () => {
       fetch('/api/social/friends')
     ]);
     
-    const chatsData = await chatsRes.json();
-    const friendsData = await friendsRes.json();
+    const chatsJson = await chatsRes.json();
+    const friendsJson = await friendsRes.json();
     
-    chats.push(...chatsData);
-    friends.push(...friendsData);
+    const chatsData = chatsJson.data || [];
+    const friendsData = friendsJson.data || [];
+
+    chats.push(...(Array.isArray(chatsData) ? chatsData : []));
+    friends.push(...(Array.isArray(friendsData) ? friendsData : []));
     
     if (chats.length > 0) {
       selectChat(chats[0]);
@@ -201,15 +263,69 @@ onMounted(() => {
               <span class="font-bold text-sm text-zinc-100">{{ friend.name }}</span>
               <p class="text-[10px] text-zinc-500">{{ friend.status === 'online' ? '在线' : '离线' }}</p>
             </div>
-            <button class="p-2 bg-zinc-800 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity">
+            <button
+              @click.stop="startChatWithFriend(friend)"
+              class="p-2 bg-zinc-800 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity hover:bg-orange-500/20"
+            >
               <MessageCircle class="w-4 h-4 text-orange-500" />
             </button>
           </div>
-          <button class="w-full flex items-center justify-center gap-2 p-4 text-orange-500 text-sm font-bold hover:bg-orange-500/5 rounded-2xl mt-2 transition-colors">
+          <button
+            @click="handleAddFriend"
+            class="w-full flex items-center justify-center gap-2 p-4 text-orange-500 text-sm font-bold hover:bg-orange-500/5 rounded-2xl mt-2 transition-colors"
+          >
             <UserPlus class="w-4 h-4" />
             添加新好友
           </button>
         </template>
+      </div>
+    </div>
+
+    <!-- Add Friend Modal -->
+    <div
+      v-if="showAddFriendModal"
+      class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center"
+      @click.self="closeAddFriendModal"
+    >
+      <div class="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 w-full max-w-md shadow-2xl">
+        <div class="flex items-center justify-between mb-6">
+          <h3 class="text-xl font-bold text-zinc-100">添加好友</h3>
+          <button
+            @click="closeAddFriendModal"
+            class="p-2 hover:bg-zinc-800 rounded-xl transition-colors"
+          >
+            <svg class="w-5 h-5 text-zinc-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <div class="space-y-4">
+          <div>
+            <label class="block text-sm font-medium text-zinc-400 mb-2">搜索用户</label>
+            <div class="flex gap-2">
+              <input
+                v-model="friendSearchInput"
+                @keyup.enter="searchAndAddFriend"
+                type="text"
+                placeholder="输入用户名或ID"
+                class="flex-1 bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-2 text-sm text-zinc-100 outline-none focus:border-orange-500 transition-colors"
+              />
+              <button
+                @click="searchAndAddFriend"
+                class="px-4 py-2 bg-orange-500 hover:bg-orange-600 rounded-xl text-white font-medium transition-colors"
+              >
+                搜索
+              </button>
+            </div>
+          </div>
+
+          <div class="pt-4 border-t border-zinc-800">
+            <p class="text-xs text-zinc-500">
+              提示：输入对方的用户名或ID进行搜索，发送好友请求后等待对方通过即可开始聊天。
+            </p>
+          </div>
+        </div>
       </div>
     </div>
 
